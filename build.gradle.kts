@@ -24,6 +24,13 @@ application {
     mainClass.set("cn.altawk.test.scripting.ScriptBenchmarkMainKt")
 }
 
+repositories {
+    // 中央库
+    mavenCentral()
+    // JitPack
+    maven("https://jitpack.io")
+}
+
 dependencies {
     implementation(kotlin("stdlib"))
     implementation(kotlin("reflect"))

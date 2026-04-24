@@ -1,13 +1,10 @@
-name: Script Engine JMH Benchmark
+name: Scripting Benchmark
 
 on:
   workflow_dispatch:
     inputs:
       jmh_args:
-        description: >-
-          Arguments passed to ScriptBenchmarkMain. Default runs the full matrix.
-          --engine/--case accept exact names or regex.
-          Example: --quick --engine 'GraalJS|Jexl' --case compute --phase compiledExecution
+        description: "Extra JMH args, e.g. --quick --engine GraalJS --case compute"
         required: false
         default: ""
         type: string
@@ -27,19 +24,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Set up GraalVM
+      - name: Set up Java
         uses: graalvm/setup-graalvm@v1
         with:
           distribution: graalvm
-          java-version: "23"
+          java-version: "25"
 
       - name: Prepare Gradle wrapper
         run: chmod +x ./gradlew
 
-      - name: Compile benchmark program
-        run: ./gradlew clean classes
-
-      - name: Run JMH benchmark
+      - name: Run Benchmark
         env:
           INPUT_JMH_ARGS: ${{ inputs.jmh_args }}
           ENABLE_JFR: ${{ inputs.enable_jfr }}
@@ -58,10 +52,6 @@ jobs:
           mkdir -p build/reports/jfr
           find . -maxdepth 2 -type f -name '*.jfr' ! -path './build/reports/jfr/*' -exec mv '{}' build/reports/jfr/ \;
           ls -la build/reports/jfr || true
-
-      - name: Build executable benchmark jar
-        if: always()
-        run: ./gradlew benchmarkJar
 
       - name: Generate Markdown report
         if: always()
