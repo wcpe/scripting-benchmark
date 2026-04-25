@@ -109,7 +109,7 @@ def generate_performance_highlights(jmh_summary):
 
     for phase, results in jmh_summary["fastest_engines"].items():
         if results:
-            lines.append(f"### {phase}", "")
+            lines.extend([f"### {phase}", ""])
             engine_counts = defaultdict(int)
             for result in results:
                 engine_counts[result["engine"]] += 1
