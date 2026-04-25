@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import re
 import subprocess
 from pathlib import Path
 from collections import defaultdict
 
 
-def run_jfr_command(jfr_file, event_type):
+def parse_duration(duration_str):
+    """Parse ISO 8601 duration string (e.g., 'PT0.008921627S') to milliseconds."""
+    if not duration_str or not isinstance(duration_str, str):
+        return 0.0
+    match = re.match(r"PT([\d.]+)S", duration_str)
+    if match:
+        return float(match.group(1)) * 1000.0
+    return 0.0
+
+
+def run_jfr_command(jfr_file, event_type, timeout=10):
     """Run jfr command and return parsed output."""
     try:
         result = subprocess.run(
@@ -14,21 +25,30 @@ def run_jfr_command(jfr_file, event_type):
             capture_output=True,
             text=True,
             check=True,
+            timeout=timeout,
         )
-        return json.loads(result.stdout) if result.stdout.strip() else {"events": []}
-    except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError):
-        return {"events": []}
+        if not result.stdout.strip():
+            return []
+        data = json.loads(result.stdout)
+        # Handle both direct events array and nested recording.events structure
+        if isinstance(data, dict):
+            return data.get("recording", {}).get("events", [])
+        return data if isinstance(data, list) else []
+    except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError, subprocess.TimeoutExpired):
+        return []
 
 
 def analyze_cpu_usage(jfr_file):
     """Analyze CPU usage from JFR."""
-    data = run_jfr_command(jfr_file, "jdk.CPULoad")
-    events = data.get("events", [])
+    events = run_jfr_command(jfr_file, "jdk.CPULoad")
     if not events:
         return None
 
-    total_cpu = sum(e.get("machineTotal", 0) for e in events)
-    jvm_cpu = sum(e.get("jvmUser", 0) + e.get("jvmSystem", 0) for e in events)
+    total_cpu = sum(e.get("values", {}).get("machineTotal", 0) for e in events)
+    jvm_cpu = sum(
+        e.get("values", {}).get("jvmUser", 0) + e.get("values", {}).get("jvmSystem", 0)
+        for e in events
+    )
     count = len(events)
 
     return {
@@ -39,12 +59,15 @@ def analyze_cpu_usage(jfr_file):
 
 def analyze_memory(jfr_file):
     """Analyze memory usage from JFR."""
-    data = run_jfr_command(jfr_file, "jdk.GCHeapSummary")
-    events = data.get("events", [])
+    events = run_jfr_command(jfr_file, "jdk.GCHeapSummary")
     if not events:
         return None
 
-    heap_used = [e.get("heapUsed", 0) for e in events if "heapUsed" in e]
+    heap_used = [
+        e.get("values", {}).get("heapUsed", 0)
+        for e in events
+        if "heapUsed" in e.get("values", {})
+    ]
     if not heap_used:
         return None
 
@@ -56,31 +79,36 @@ def analyze_memory(jfr_file):
 
 def analyze_gc(jfr_file):
     """Analyze GC statistics from JFR."""
-    data = run_jfr_command(jfr_file, "jdk.GarbageCollection")
-    events = data.get("events", [])
+    events = run_jfr_command(jfr_file, "jdk.GarbageCollection")
     if not events:
         return None
 
-    total_pause = sum(e.get("sumOfPauses", 0) for e in events)
-    longest_pause = max((e.get("longestPause", 0) for e in events), default=0)
+    total_pause = sum(
+        parse_duration(e.get("values", {}).get("sumOfPauses")) for e in events
+    )
+    longest_pause = max(
+        (parse_duration(e.get("values", {}).get("longestPause")) for e in events),
+        default=0,
+    )
 
     return {
         "gc_count": len(events),
-        "total_pause_ms": total_pause / 1_000_000,
-        "longest_pause_ms": longest_pause / 1_000_000,
+        "total_pause_ms": total_pause,
+        "longest_pause_ms": longest_pause,
     }
 
 
 def analyze_compilation(jfr_file):
     """Analyze JIT compilation from JFR."""
-    data = run_jfr_command(jfr_file, "jdk.Compilation")
-    events = data.get("events", [])
+    events = run_jfr_command(jfr_file, "jdk.Compilation")
     if not events:
         return None
 
     return {
         "compilation_count": len(events),
-        "total_compilation_ms": sum(e.get("duration", 0) for e in events) / 1_000_000,
+        "total_compilation_ms": sum(
+            parse_duration(e.get("values", {}).get("duration")) for e in events
+        ),
     }
 
 
@@ -93,7 +121,7 @@ def format_metric(value, unit=""):
     return f"{value}{unit}"
 
 
-def generate_report(jfr_files, output_path):
+def generate_report(jfr_files, output_path, max_files=20):
     """Generate JFR analysis report."""
     lines = ["# JFR 性能分析报告", ""]
 
@@ -102,9 +130,24 @@ def generate_report(jfr_files, output_path):
         output_path.write_text("\n".join(lines), encoding="utf-8")
         return
 
+    total_files = len(jfr_files)
+    if total_files > max_files:
+        import random
+        sampled_files = random.sample(jfr_files, max_files)
+        lines.extend([
+            f"找到 {total_files} 个 JFR 文件，随机采样 {max_files} 个进行分析。",
+            "",
+        ])
+    else:
+        sampled_files = jfr_files
+        lines.extend([
+            f"分析 {total_files} 个 JFR 文件。",
+            "",
+        ])
+
     results = defaultdict(dict)
 
-    for jfr_file in jfr_files:
+    for jfr_file in sampled_files:
         name = jfr_file.stem
         results[name]["cpu"] = analyze_cpu_usage(jfr_file)
         results[name]["memory"] = analyze_memory(jfr_file)
@@ -112,8 +155,6 @@ def generate_report(jfr_files, output_path):
         results[name]["compilation"] = analyze_compilation(jfr_file)
 
     lines.extend([
-        f"分析了 {len(jfr_files)} 个 JFR 文件。",
-        "",
         "## CPU 使用率",
         "",
         "| 测试 | 平均机器 CPU | 平均 JVM CPU |",
@@ -197,14 +238,20 @@ def main():
         default="build/reports/jfr/analysis.md",
         help="报告输出路径",
     )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=20,
+        help="最大分析文件数（默认 20）",
+    )
     args = parser.parse_args()
 
     input_path = Path(args.input)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    jfr_files = sorted(input_path.glob("*.jfr")) if input_path.is_dir() else []
-    generate_report(jfr_files, output_path)
+    jfr_files = sorted(input_path.rglob("*.jfr")) if input_path.is_dir() else []
+    generate_report(jfr_files, output_path, args.max_files)
 
 
 if __name__ == "__main__":

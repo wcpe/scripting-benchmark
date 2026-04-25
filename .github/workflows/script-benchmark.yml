@@ -132,16 +132,23 @@ jobs:
           fi
           find . -maxdepth 2 -type f -name '*.jfr' ! -path './build/reports/jfr/*' -exec mv '{}' build/reports/jfr/ \;
 
-      - name: Upload benchmark artifacts
+      - name: Upload JMH artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: script-jmh-result-${{ matrix.engine }}-${{ matrix.phase }}-${{ github.run_number }}
+          name: jmh-results-${{ matrix.engine }}-${{ matrix.phase }}-${{ github.run_number }}
           if-no-files-found: ignore
           retention-days: 14
-          path: |
-            build/reports/jmh/results/*.json
-            build/reports/jfr/*.jfr
+          path: build/reports/jmh/results/*.json
+
+      - name: Upload JFR artifacts
+        if: always() && inputs.enable_jfr == true
+        uses: actions/upload-artifact@v7
+        with:
+          name: jfr-results-${{ matrix.engine }}-${{ matrix.phase }}-${{ github.run_number }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: build/reports/jfr/*.jfr
 
   report:
     name: Merge benchmark report
@@ -155,52 +162,59 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Download benchmark artifacts
+      - name: Download JMH artifacts
         uses: actions/download-artifact@v7
         continue-on-error: true
         with:
-          pattern: script-jmh-result-*-${{ github.run_number }}
+          pattern: jmh-results-*-${{ github.run_number }}
           path: build/reports/jmh/downloaded
           merge-multiple: true
 
-      - name: Generate JMH Markdown report
+      - name: Download JFR artifacts
+        if: inputs.enable_jfr == true
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          pattern: jfr-results-*-${{ github.run_number }}
+          path: build/reports/jfr/downloaded
+          merge-multiple: true
+
+      - name: Generate JMH report
         env:
           INPUT_JMH_ARGS: ${{ inputs.jmh_args }}
-          ENABLE_JFR: ${{ inputs.enable_jfr }}
         run: |
           mkdir -p build/reports/jmh
           if [[ -n "$(find build/reports/jmh/downloaded -type f -name '*.json' -print -quit 2>/dev/null)" ]]; then
             python3 scripts/generate-jmh-report.py \
               --input build/reports/jmh/downloaded \
               --output build/reports/jmh/report.md \
-              --jfr "$ENABLE_JFR" \
+              --jfr "false" \
               --args "GitHub Actions matrix: --quick ${INPUT_JMH_ARGS:-}"
           else
             cat > build/reports/jmh/report.md <<'EOF'
           # 脚本引擎 JMH 性能测试报告
 
           本次执行未下载到任何 JMH JSON 结果。
-          请查看上传的 Gradle/JMH 日志与其它产物定位原因。
           EOF
           fi
 
-      - name: Analyze JFR files
+      - name: Generate JFR report
         if: inputs.enable_jfr == true
         run: |
           mkdir -p build/reports/jfr
-          if [[ -n "$(find build/reports/jmh/downloaded -type f -name '*.jfr' -print -quit 2>/dev/null)" ]]; then
+          if [[ -n "$(find build/reports/jfr/downloaded -type f -name '*.jfr' -print -quit 2>/dev/null)" ]]; then
             python3 scripts/analyze-jfr.py \
-              --input build/reports/jmh/downloaded \
-              --output build/reports/jfr/analysis.md
+              --input build/reports/jfr/downloaded \
+              --output build/reports/jfr/report.md
           else
-            cat > build/reports/jfr/analysis.md <<'EOF'
+            cat > build/reports/jfr/report.md <<'EOF'
           # JFR 性能分析报告
 
           未找到 JFR 文件。
           EOF
           fi
 
-      - name: Generate benchmark report
+      - name: Generate summary report
         env:
           MATRIX_JSON: ${{ needs.prepare-matrix.outputs.matrix }}
           INPUT_JMH_ARGS: ${{ inputs.jmh_args }}
@@ -209,38 +223,35 @@ jobs:
           mkdir -p build/reports
           python3 scripts/generate-benchmark-report.py \
             --jmh-report build/reports/jmh/report.md \
-            --jfr-report build/reports/jfr/analysis.md \
-            --output build/reports/benchmark-report.md \
+            --jfr-report build/reports/jfr/report.md \
+            --output build/reports/summary.md \
             --matrix-json "$MATRIX_JSON" \
             --jmh-args "--quick ${INPUT_JMH_ARGS:-}" \
             --enable-jfr "$ENABLE_JFR"
 
-      - name: Generate matrix summary
-        env:
-          ENABLE_JFR: ${{ inputs.enable_jfr }}
-        run: |
-          cat build/reports/benchmark-report.md > build/reports/summary.md
-          echo "" >> build/reports/summary.md
-          echo "---" >> build/reports/summary.md
-          echo "" >> build/reports/summary.md
-          cat build/reports/jmh/report.md >> build/reports/summary.md
-          if [[ "$ENABLE_JFR" == "true" && -f build/reports/jfr/analysis.md ]]; then
-            echo "" >> build/reports/summary.md
-            echo "---" >> build/reports/summary.md
-            echo "" >> build/reports/summary.md
-            cat build/reports/jfr/analysis.md >> build/reports/summary.md
-          fi
-
-      - name: Publish report to job summary
+      - name: Publish summary to job summary
         run: cat build/reports/summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload merged benchmark artifacts
+      - name: Upload JMH report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: script-jmh-report-${{ github.run_number }}
+          name: jmh-report-${{ github.run_number }}
           if-no-files-found: warn
-          path: |
-            build/reports/jmh/**
-            build/reports/jfr/**
-            build/reports/summary.md
+          path: build/reports/jmh/**
+
+      - name: Upload JFR report
+        if: always() && inputs.enable_jfr == true
+        uses: actions/upload-artifact@v7
+        with:
+          name: jfr-report-${{ github.run_number }}
+          if-no-files-found: warn
+          path: build/reports/jfr/**
+
+      - name: Upload summary report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-summary-${{ github.run_number }}
+          if-no-files-found: warn
+          path: build/reports/summary.md
