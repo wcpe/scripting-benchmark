@@ -121,8 +121,37 @@ def format_metric(value, unit=""):
     return f"{value}{unit}"
 
 
-def generate_report(jfr_files, output_path, max_files=20):
-    """Generate JFR analysis report."""
+def extract_matrix_key(jfr_filename):
+    """Extract engine-phase key from artifact filename pattern."""
+    import re
+    match = re.search(r'jfr-results-([^-]+)-([^-]+)-', jfr_filename)
+    if match:
+        return f"{match.group(1)}-{match.group(2)}"
+    return "unknown"
+
+
+def aggregate_metrics(metrics_list):
+    """Aggregate multiple metrics into summary statistics."""
+    if not metrics_list:
+        return None
+
+    valid_metrics = [m for m in metrics_list if m is not None]
+    if not valid_metrics:
+        return None
+
+    result = {}
+    for key in valid_metrics[0].keys():
+        values = [m[key] for m in valid_metrics if key in m and m[key] is not None]
+        if values:
+            result[f"avg_{key}"] = sum(values) / len(values)
+            result[f"max_{key}"] = max(values)
+            result[f"min_{key}"] = min(values)
+
+    return result
+
+
+def generate_report(jfr_files, output_path, max_files_per_group=10):
+    """Generate JFR analysis report grouped by matrix (engine-phase)."""
     lines = ["# JFR 性能分析报告", ""]
 
     if not jfr_files:
@@ -130,96 +159,118 @@ def generate_report(jfr_files, output_path, max_files=20):
         output_path.write_text("\n".join(lines), encoding="utf-8")
         return
 
-    total_files = len(jfr_files)
-    if total_files > max_files:
-        import random
-        sampled_files = random.sample(jfr_files, max_files)
-        lines.extend([
-            f"找到 {total_files} 个 JFR 文件，随机采样 {max_files} 个进行分析。",
-            "",
-        ])
-    else:
-        sampled_files = jfr_files
-        lines.extend([
-            f"分析 {total_files} 个 JFR 文件。",
-            "",
-        ])
+    grouped_files = defaultdict(list)
+    for jfr_file in jfr_files:
+        parent_dir = jfr_file.parent.name
+        matrix_key = extract_matrix_key(parent_dir)
+        grouped_files[matrix_key].append(jfr_file)
 
-    results = defaultdict(dict)
+    lines.extend([
+        f"找到 {len(jfr_files)} 个 JFR 文件，按矩阵分组为 {len(grouped_files)} 个类别。",
+        f"每个类别采样最多 {max_files_per_group} 个文件进行分析。",
+        "",
+    ])
 
-    for jfr_file in sampled_files:
-        name = jfr_file.stem
-        results[name]["cpu"] = analyze_cpu_usage(jfr_file)
-        results[name]["memory"] = analyze_memory(jfr_file)
-        results[name]["gc"] = analyze_gc(jfr_file)
-        results[name]["compilation"] = analyze_compilation(jfr_file)
+    matrix_results = {}
+
+    for matrix_key in sorted(grouped_files.keys()):
+        files = grouped_files[matrix_key]
+        sampled = files[:max_files_per_group]
+
+        cpu_metrics = []
+        memory_metrics = []
+        gc_metrics = []
+        compilation_metrics = []
+
+        for jfr_file in sampled:
+            cpu_metrics.append(analyze_cpu_usage(jfr_file))
+            memory_metrics.append(analyze_memory(jfr_file))
+            gc_metrics.append(analyze_gc(jfr_file))
+            compilation_metrics.append(analyze_compilation(jfr_file))
+
+        matrix_results[matrix_key] = {
+            "cpu": aggregate_metrics(cpu_metrics),
+            "memory": aggregate_metrics(memory_metrics),
+            "gc": aggregate_metrics(gc_metrics),
+            "compilation": aggregate_metrics(compilation_metrics),
+            "sample_count": len(sampled),
+            "total_count": len(files),
+        }
 
     lines.extend([
         "## CPU 使用率",
         "",
-        "| 测试 | 平均机器 CPU | 平均 JVM CPU |",
-        "|---|---:|---:|",
+        "| 引擎-阶段 | 平均机器 CPU | 平均 JVM CPU | 样本数 |",
+        "|---|---:|---:|---:|",
     ])
 
-    for name, data in sorted(results.items()):
+    for matrix_key in sorted(matrix_results.keys()):
+        data = matrix_results[matrix_key]
         cpu = data.get("cpu")
         if cpu:
             lines.append(
-                f"| {name} "
-                f"| {format_metric(cpu['avg_machine_cpu'], '%')} "
-                f"| {format_metric(cpu['avg_jvm_cpu'], '%')} |"
+                f"| {matrix_key} "
+                f"| {format_metric(cpu.get('avg_avg_machine_cpu'), '%')} "
+                f"| {format_metric(cpu.get('avg_avg_jvm_cpu'), '%')} "
+                f"| {data['sample_count']}/{data['total_count']} |"
             )
 
     lines.extend([
         "",
         "## 内存使用",
         "",
-        "| 测试 | 最大堆内存 | 平均堆内存 |",
-        "|---|---:|---:|",
+        "| 引擎-阶段 | 平均最大堆 | 平均堆使用 | 样本数 |",
+        "|---|---:|---:|---:|",
     ])
 
-    for name, data in sorted(results.items()):
+    for matrix_key in sorted(matrix_results.keys()):
+        data = matrix_results[matrix_key]
         memory = data.get("memory")
         if memory:
             lines.append(
-                f"| {name} "
-                f"| {format_metric(memory['max_heap_mb'], ' MB')} "
-                f"| {format_metric(memory['avg_heap_mb'], ' MB')} |"
+                f"| {matrix_key} "
+                f"| {format_metric(memory.get('avg_max_heap_mb'), ' MB')} "
+                f"| {format_metric(memory.get('avg_avg_heap_mb'), ' MB')} "
+                f"| {data['sample_count']}/{data['total_count']} |"
             )
 
     lines.extend([
         "",
         "## GC 统计",
         "",
-        "| 测试 | GC 次数 | 总暂停时间 | 最长暂停 |",
-        "|---|---:|---:|---:|",
+        "| 引擎-阶段 | 平均 GC 次数 | 平均总暂停 | 平均最长暂停 | 样本数 |",
+        "|---|---:|---:|---:|---:|",
     ])
 
-    for name, data in sorted(results.items()):
+    for matrix_key in sorted(matrix_results.keys()):
+        data = matrix_results[matrix_key]
         gc = data.get("gc")
         if gc:
             lines.append(
-                f"| {name} "
-                f"| {format_metric(gc['gc_count'])} "
-                f"| {format_metric(gc['total_pause_ms'], ' ms')} "
-                f"| {format_metric(gc['longest_pause_ms'], ' ms')} |"
+                f"| {matrix_key} "
+                f"| {format_metric(gc.get('avg_gc_count'))} "
+                f"| {format_metric(gc.get('avg_total_pause_ms'), ' ms')} "
+                f"| {format_metric(gc.get('avg_longest_pause_ms'), ' ms')} "
+                f"| {data['sample_count']}/{data['total_count']} |"
             )
 
     lines.extend([
         "",
         "## JIT 编译",
         "",
-        "| 测试 | 编译次数 | 总编译时间 |",
-        "|---|---:|---:|",
+        "| 引擎-阶段 | 平均编译次数 | 平均总编译时间 | 样本数 |",
+        "|---|---:|---:|---:|",
     ])
 
-    for name, data in sorted(results.items()):
+    for matrix_key in sorted(matrix_results.keys()):
+        data = matrix_results[matrix_key]
         compilation = data.get("compilation")
         if compilation:
             lines.append(
-                f"| {name} "
-                f"| {format_metric(compilation['compilation_count'])} "
-                f"| {format_metric(compilation['total_compilation_ms'], ' ms')} |"
+                f"| {matrix_key} "
+                f"| {format_metric(compilation.get('avg_compilation_count'))} "
+                f"| {format_metric(compilation.get('avg_total_compilation_ms'), ' ms')} "
+                f"| {data['sample_count']}/{data['total_count']} |"
             )
 
     lines.append("")
@@ -239,10 +290,10 @@ def main():
         help="报告输出路径",
     )
     parser.add_argument(
-        "--max-files",
+        "--max-files-per-group",
         type=int,
-        default=20,
-        help="最大分析文件数（默认 20）",
+        default=10,
+        help="每个矩阵组最大分析文件数（默认 10）",
     )
     args = parser.parse_args()
 
@@ -251,7 +302,7 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     jfr_files = sorted(input_path.rglob("*.jfr")) if input_path.is_dir() else []
-    generate_report(jfr_files, output_path, args.max_files)
+    generate_report(jfr_files, output_path, args.max_files_per_group)
 
 
 if __name__ == "__main__":

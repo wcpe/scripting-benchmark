@@ -124,32 +124,11 @@ def generate_performance_highlights(jmh_summary):
     return lines
 
 
-def generate_resource_analysis(jfr_summary):
-    """Generate resource usage analysis section."""
-    if not jfr_summary or not jfr_summary["cpu_data"]:
-        return []
-
-    lines = ["## 资源使用分析", ""]
-
-    if jfr_summary["memory_data"]:
-        lines.extend([
-            "### 内存使用",
-            "",
-            f"- 分析了 {len(jfr_summary['memory_data'])} 个测试的内存使用情况",
-            "- 详细数据请参考 JFR 分析报告",
-            "",
-        ])
-
-    if jfr_summary["gc_data"]:
-        lines.extend([
-            "### GC 性能",
-            "",
-            f"- 分析了 {len(jfr_summary['gc_data'])} 个测试的 GC 行为",
-            "- 详细数据请参考 JFR 分析报告",
-            "",
-        ])
-
-    return lines
+def load_full_report(report_path):
+    """Load full report content."""
+    if not report_path.exists():
+        return None
+    return report_path.read_text(encoding="utf-8")
 
 
 def generate_recommendations(jmh_summary, jfr_summary):
@@ -217,6 +196,10 @@ def main():
     jfr_summary = (
         load_jfr_summary(jfr_report_path) if args.enable_jfr == "true" else None
     )
+    jmh_full_report = load_full_report(jmh_report_path)
+    jfr_full_report = (
+        load_full_report(jfr_report_path) if args.enable_jfr == "true" else None
+    )
 
     lines = [
         "# 脚本引擎基准测试报告",
@@ -227,7 +210,6 @@ def main():
 
     lines.extend(generate_executive_summary(jmh_summary, jfr_summary))
     lines.extend(generate_performance_highlights(jmh_summary))
-    lines.extend(generate_resource_analysis(jfr_summary))
     lines.extend(generate_recommendations(jmh_summary, jfr_summary))
 
     lines.extend([
@@ -257,15 +239,15 @@ def main():
         "",
         "---",
         "",
-        "## 详细报告",
-        "",
-        "- [JMH 性能测试详细报告](jmh/report.md)",
     ])
 
-    if args.enable_jfr == "true":
-        lines.append("- [JFR 性能分析详细报告](jfr/analysis.md)")
+    if jmh_full_report:
+        lines.append(jmh_full_report)
+        lines.extend(["", "---", ""])
 
-    lines.append("")
+    if jfr_full_report:
+        lines.append(jfr_full_report)
+        lines.append("")
 
     output_path.write_text("\n".join(lines), encoding="utf-8")
 

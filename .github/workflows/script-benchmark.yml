@@ -177,7 +177,7 @@ jobs:
         with:
           pattern: jfr-results-*-${{ github.run_number }}
           path: build/reports/jfr/downloaded
-          merge-multiple: true
+          merge-multiple: false
 
       - name: Generate JMH report
         env:
