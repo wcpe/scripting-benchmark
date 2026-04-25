@@ -9,19 +9,19 @@ private const val ITER_PLACEHOLDER = "__ITER__"
 
 /** 跨引擎共享的测试场景；各引擎通过相同 id 加载对应语言版本的脚本样本。 */
 val BENCHMARK_SCRIPT_CASES = listOf(
-    BenchmarkScriptCase("compute", "数值累加"),
-    BenchmarkScriptCase("branching", "条件分支"),
-    BenchmarkScriptCase("nested-loop", "嵌套循环"),
-    BenchmarkScriptCase("list-index", "列表索引访问"),
-    BenchmarkScriptCase("list-build", "列表构建"),
-    BenchmarkScriptCase("map-build", "映射构建"),
-    BenchmarkScriptCase("string-build", "字符串构建"),
-    BenchmarkScriptCase("variable-expression", "变量计算（复杂表达式）", ::variableExpressionBindings),
-    BenchmarkScriptCase("host-class-access", "Java API 类元数据访问", ::javaApiBindings),
-    BenchmarkScriptCase("host-instance-field-read", "Java API 实例字段读取", ::javaApiBindings),
-    BenchmarkScriptCase("host-static-field-read", "Java API 静态字段读取", ::javaApiBindings),
-    BenchmarkScriptCase("host-instance-method-call", "Java API 实例方法调用", ::javaApiBindings),
-    BenchmarkScriptCase("host-static-method-call", "Java API 静态方法调用", ::javaApiBindings),
+    BenchmarkScriptCase("compute"),
+    BenchmarkScriptCase("branching"),
+    BenchmarkScriptCase("nested-loop"),
+    BenchmarkScriptCase("list-index"),
+    BenchmarkScriptCase("list-build"),
+    BenchmarkScriptCase("map-build"),
+    BenchmarkScriptCase("string-build"),
+    BenchmarkScriptCase("variable-expression", ::variableExpressionBindings),
+    BenchmarkScriptCase("host-class-access", ::javaApiBindings),
+    BenchmarkScriptCase("host-instance-field-read", ::javaApiBindings),
+    BenchmarkScriptCase("host-static-field-read", ::javaApiBindings),
+    BenchmarkScriptCase("host-instance-method-call", ::javaApiBindings),
+    BenchmarkScriptCase("host-static-method-call", ::javaApiBindings),
 )
 
 /** 加载指定引擎在该场景下的样本；不存在时抛出明确错误。 */

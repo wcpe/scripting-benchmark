@@ -3,6 +3,7 @@ package cn.altawk.test.scripting
 import cn.altawk.test.scripting.engine.FluxonScriptEngineAdapter
 import cn.altawk.test.scripting.engine.GraalJsScriptEngineAdapter
 import cn.altawk.test.scripting.engine.JexlScriptEngineAdapter
+import cn.altawk.test.scripting.engine.KotlinScriptingOptimizedScriptEngineAdapter
 import cn.altawk.test.scripting.engine.KotlinScriptingScriptEngineAdapter
 import cn.altawk.test.scripting.engine.NashornScriptEngineAdapter
 
@@ -12,6 +13,7 @@ val SCRIPT_ENGINE_ADAPTERS: List<ScriptEngineAdapter<out Any>> = listOf(
     NashornScriptEngineAdapter,
     JexlScriptEngineAdapter,
     KotlinScriptingScriptEngineAdapter,
+    KotlinScriptingOptimizedScriptEngineAdapter,
     FluxonScriptEngineAdapter,
 )
 
@@ -28,7 +30,6 @@ data class ScriptSample(
 /** 一类跨引擎对齐的测试场景，例如数值计算、列表构建或 Java API 调用。 */
 data class BenchmarkScriptCase(
     val id: String,
-    val displayName: String,
     val bindingsFactory: () -> MutableMap<String, Any?> = { linkedMapOf() },
 )
 
