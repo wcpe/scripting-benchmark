@@ -163,7 +163,7 @@ jobs:
           path: build/reports/jmh/downloaded
           merge-multiple: true
 
-      - name: Generate Markdown report
+      - name: Generate JMH Markdown report
         env:
           INPUT_JMH_ARGS: ${{ inputs.jmh_args }}
           ENABLE_JFR: ${{ inputs.enable_jfr }}
@@ -184,8 +184,55 @@ jobs:
           EOF
           fi
 
+      - name: Analyze JFR files
+        if: inputs.enable_jfr == true
+        run: |
+          mkdir -p build/reports/jfr
+          if [[ -n "$(find build/reports/jmh/downloaded -type f -name '*.jfr' -print -quit 2>/dev/null)" ]]; then
+            python3 scripts/analyze-jfr.py \
+              --input build/reports/jmh/downloaded \
+              --output build/reports/jfr/analysis.md
+          else
+            cat > build/reports/jfr/analysis.md <<'EOF'
+          # JFR 性能分析报告
+
+          未找到 JFR 文件。
+          EOF
+          fi
+
+      - name: Generate benchmark report
+        env:
+          MATRIX_JSON: ${{ needs.prepare-matrix.outputs.matrix }}
+          INPUT_JMH_ARGS: ${{ inputs.jmh_args }}
+          ENABLE_JFR: ${{ inputs.enable_jfr }}
+        run: |
+          mkdir -p build/reports
+          python3 scripts/generate-benchmark-report.py \
+            --jmh-report build/reports/jmh/report.md \
+            --jfr-report build/reports/jfr/analysis.md \
+            --output build/reports/benchmark-report.md \
+            --matrix-json "$MATRIX_JSON" \
+            --jmh-args "--quick ${INPUT_JMH_ARGS:-}" \
+            --enable-jfr "$ENABLE_JFR"
+
+      - name: Generate matrix summary
+        env:
+          ENABLE_JFR: ${{ inputs.enable_jfr }}
+        run: |
+          cat build/reports/benchmark-report.md > build/reports/summary.md
+          echo "" >> build/reports/summary.md
+          echo "---" >> build/reports/summary.md
+          echo "" >> build/reports/summary.md
+          cat build/reports/jmh/report.md >> build/reports/summary.md
+          if [[ "$ENABLE_JFR" == "true" && -f build/reports/jfr/analysis.md ]]; then
+            echo "" >> build/reports/summary.md
+            echo "---" >> build/reports/summary.md
+            echo "" >> build/reports/summary.md
+            cat build/reports/jfr/analysis.md >> build/reports/summary.md
+          fi
+
       - name: Publish report to job summary
-        run: cat build/reports/jmh/report.md >> "$GITHUB_STEP_SUMMARY"
+        run: cat build/reports/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload merged benchmark artifacts
         if: always()
@@ -193,4 +240,7 @@ jobs:
         with:
           name: script-jmh-report-${{ github.run_number }}
           if-no-files-found: warn
-          path: build/reports/jmh/**
+          path: |
+            build/reports/jmh/**
+            build/reports/jfr/**
+            build/reports/summary.md
