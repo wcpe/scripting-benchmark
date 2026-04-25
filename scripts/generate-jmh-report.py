@@ -21,17 +21,12 @@ CASE_NAMES = {
     "list-build": "列表构建",
     "map-build": "映射构建",
     "string-build": "字符串构建",
-    "map-read": "宿主 Map 查询",
-    "collection-transform": "集合筛选/转换/累加",
-    "string-methods": "字符串方法组合调用",
     "variable-expression": "变量计算（复杂表达式）",
-    "regex-match": "预编译正则匹配",
     "host-class-access": "Java API 类元数据访问",
     "host-instance-field-read": "Java API 实例字段读取",
     "host-static-field-read": "Java API 静态字段读取",
     "host-instance-method-call": "Java API 实例方法调用",
     "host-static-method-call": "Java API 静态方法调用",
-    "object-allocation": "宿主对象分配与字段读取",
 }
 
 CASE_ORDER = {case_id: index for index, case_id in enumerate(CASE_NAMES)}

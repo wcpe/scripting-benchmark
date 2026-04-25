@@ -1,8 +1,0 @@
-var sum = 0L;
-var i = 0;
-while (i < __ITER__) {
-    var point = new('java.awt.Point', i, i + 1);
-    sum = sum + point.x + point.y;
-    i = i + 1;
-}
-sum

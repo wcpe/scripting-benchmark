@@ -1,9 +1,0 @@
-var total = 0L;
-var i = 0;
-while (i < __ITER__) {
-    var pos = message.indexOf(marker);
-    var slice = message.substring(pos, pos + marker.length());
-    total = total + pos + slice.length();
-    i = i + 1;
-}
-total

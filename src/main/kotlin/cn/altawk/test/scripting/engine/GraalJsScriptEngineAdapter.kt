@@ -5,6 +5,7 @@ import cn.altawk.test.scripting.ScriptSample
 import org.graalvm.polyglot.Context
 import org.graalvm.polyglot.Engine
 import org.graalvm.polyglot.Source
+import org.graalvm.polyglot.Value
 
 /** GraalVM JavaScript 适配器；复用 Engine，Context 按编译产物隔离。 */
 object GraalJsScriptEngineAdapter : ScriptEngineAdapter<GraalPreparedScript> {
@@ -31,11 +32,12 @@ object GraalJsScriptEngineAdapter : ScriptEngineAdapter<GraalPreparedScript> {
         val source = Source.newBuilder("js", sample.content, sample.path)
             .cached(true)
             .build()
-        return GraalPreparedScript(context, source)
+        val executable = context.parse(source)
+        return GraalPreparedScript(context, source, executable)
     }
 
     override fun runCompiled(compiled: GraalPreparedScript): Any? {
-        return compiled.context.eval(compiled.source).`as`(Any::class.java)
+        return compiled.executable.execute().`as`(Any::class.java)
     }
 
     override fun interpret(sample: ScriptSample): Any? {
@@ -65,6 +67,7 @@ object GraalJsScriptEngineAdapter : ScriptEngineAdapter<GraalPreparedScript> {
 data class GraalPreparedScript(
     val context: Context,
     val source: Source,
+    val executable: Value,
 ) : AutoCloseable {
     override fun close() {
         context.close()
