@@ -1,0 +1,12 @@
+var total = 0L;
+var i = 0;
+while (i < __ITER__) {
+    var value = numbers.get(i % 128);
+    if ((value % 3) == 0) {
+        total = total + (value * 2);
+    } else {
+        total = total - value;
+    }
+    i = i + 1;
+}
+total

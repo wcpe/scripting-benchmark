@@ -193,5 +193,4 @@ jobs:
         with:
           name: script-jmh-report-${{ github.run_number }}
           if-no-files-found: warn
-          retention-days: 14
-          path: build/reports/jmh/report.md
+          path: build/reports/jmh/**

@@ -12,21 +12,30 @@
 
 ## 测试场景
 
-当前内置的跨引擎样本包括：
+当前内置的跨引擎样本按代表性场景整理如下：
 
-- 数值累加：`compute`
-- 条件分支：`branching`
-- 嵌套循环：`nested-loop`
-- 列表索引访问：`list-index`
-- 列表构建：`list-build`
-- 映射构建：`map-build`
-- 字符串构建：`string-build`
-- 复杂变量表达式：`variable-expression`
-- Java API 类元数据访问：`host-class-access`
-- Java API 实例字段读取：`host-instance-field-read`
-- Java API 静态字段读取：`host-static-field-read`
-- Java API 实例方法调用：`host-instance-method-call`
-- Java API 静态方法调用：`host-static-method-call`
+- 基础控制流和算术
+  - 数值累加：`compute`
+  - 条件分支：`branching`
+  - 嵌套循环：`nested-loop`
+- 集合、映射和字符串
+  - 列表索引访问：`list-index`
+  - 列表构建：`list-build`
+  - 映射构建：`map-build`
+  - 字符串构建：`string-build`
+  - 宿主 `Map` 查询：`map-read`
+  - 集合筛选/转换/累加：`collection-transform`
+  - 字符串方法组合调用：`string-methods`
+- 绑定变量和工具类调用
+  - 复杂变量表达式：`variable-expression`
+  - 预编译正则匹配：`regex-match`
+- Java API / 宿主对象互操作
+  - Java API 类元数据访问：`host-class-access`
+  - Java API 实例字段读取：`host-instance-field-read`
+  - Java API 静态字段读取：`host-static-field-read`
+  - Java API 实例方法调用：`host-instance-method-call`
+  - Java API 静态方法调用：`host-static-method-call`
+  - 宿主对象分配与字段读取：`object-allocation`
 
 ## 基准阶段
 
